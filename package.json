@@ -1,0 +1,53 @@
+{
+  "name": "voltbrowser",
+  "version": "1.0.0",
+  "description": "Volt Browser - A modular and productivity-focused workspace browser",
+  "main": "src/main/main.js",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "electron": "electron .",
+    "dist": "npm run build && node scripts/check-release-locks.mjs && electron-builder"
+  },
+  "dependencies": {
+    "lucide-react": "^0.435.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.5.2",
+    "vite": "^5.3.1"
+  },
+  "build": {
+    "appId": "com.volt.browser",
+    "productName": "Volt Browser",
+    "electronDist": "./node_modules/electron/dist",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "src/main/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Volt Browser"
+    }
+  }
+}

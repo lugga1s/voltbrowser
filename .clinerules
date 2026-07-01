@@ -1,0 +1,27 @@
+# Volt Browser Rules & Constraints
+
+Always adhere to these guidelines during development:
+
+## 1. Electron Security Hardening
+- `contextIsolation: true` is mandatory in the main window.
+- `nodeIntegration: false` in the renderer.
+- `sandbox: true` enabled.
+- Sanitize and validate all IPC channel inputs and schemas.
+
+## 2. Front-End Architecture
+- Use React 19, TypeScript, Vite, and Vanilla CSS.
+- Strictly avoid `any` types. Ensure full type safety.
+- Apply macOS/glassmorphism aesthetics. Use CSS variables for colors.
+- Use `width: 0px; height: 0px;` and `visibility: hidden;` for background webviews to prevent CPU drain while maintaining websocket sessions.
+
+## 3. WebView Preload Script Constraints
+- Preload attribute on `<webview>` must be provided in the initial React render.
+- Preload path must be resolved asynchronously on startup by the main process and copied to the real filesystem (`app.getPath('userData')`) in production due to ASAR loading restrictions.
+
+## 4. Git & Workflow
+- Use conventional commits: `feat(...)`, `fix(...)`, `chore(...)`.
+- Work on feature branches (`feature/<name>`). Never commit directly to `main`.
+- Always verify build succeeds before pushing: `npm run build`.
+
+## 5. Build Lock Prevention
+- Ensure all instances of `Volt Browser` and `electron` are stopped before executing `npm run dist` using `scripts/check-release-locks.mjs`.
