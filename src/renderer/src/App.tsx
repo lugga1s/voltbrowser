@@ -9,8 +9,12 @@ import {
   Search, 
   Globe, 
   Trash2, 
-  UserPlus, 
-  ShieldAlert 
+  ShieldAlert,
+  Check,
+  X,
+  ExternalLink,
+  Lock,
+  Chrome
 } from 'lucide-react';
 import { UserConfig, ShortcutConfig, SessionConfig } from './electron-api';
 
@@ -56,6 +60,9 @@ export default function App() {
 
   // New Session Form State
   const [newSessionName, setNewSessionName] = useState<string>('');
+  const [newSessionColor, setNewSessionColor] = useState<string>(PREDEFINED_COLORS[0]);
+  const [newSessionAutoLoginGoogle, setNewSessionAutoLoginGoogle] = useState<boolean>(false);
+  const [manageSessionsModalView, setManageSessionsModalView] = useState<'grid' | 'add'>('grid');
 
   // Search Box Home State
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -248,19 +255,52 @@ export default function App() {
     e.preventDefault();
     if (!newSessionName.trim()) return;
 
+    const newSessionId = `session_${Date.now()}`;
     const newSession: SessionConfig = {
-      id: `session_${Date.now()}`,
-      name: newSessionName.trim()
+      id: newSessionId,
+      name: newSessionName.trim(),
+      color: newSessionColor
     };
+
+    let updatedShortcuts = [...config.shortcuts];
+    let targetActiveShortcutId: string | null = null;
+
+    if (newSessionAutoLoginGoogle) {
+      const googleShortcutId = `google_login_${Date.now()}`;
+      const googleShortcut: ShortcutConfig = {
+        id: googleShortcutId,
+        name: `Google Login`,
+        url: 'https://accounts.google.com/',
+        sessionId: newSessionId,
+        color: newSessionColor
+      };
+      updatedShortcuts.push(googleShortcut);
+      targetActiveShortcutId = googleShortcutId;
+    }
 
     const updatedConfig = {
       ...config,
-      sessions: [...config.sessions, newSession]
+      sessions: [...config.sessions, newSession],
+      shortcuts: updatedShortcuts
     };
 
     setConfig(updatedConfig);
     await window.electronAPI.saveConfig(updatedConfig);
+    
+    // Reset Form
     setNewSessionName('');
+    setNewSessionColor(PREDEFINED_COLORS[0]);
+    setNewSessionAutoLoginGoogle(false);
+    setManageSessionsModalView('grid');
+    setShowManageSessionsModal(false);
+
+    // Navigate to Google Login if checked
+    if (targetActiveShortcutId) {
+      setActiveShortcutId(targetActiveShortcutId);
+      if (!instantiatedShortcuts.includes(targetActiveShortcutId)) {
+        setInstantiatedShortcuts(prev => [...prev, targetActiveShortcutId]);
+      }
+    }
   };
 
   // Delete Session configuration (and all linked shortcuts)
@@ -288,6 +328,25 @@ export default function App() {
         }
       }
     });
+  };
+
+  // Switch to clicked session shortcut or prompt shortcut addition
+  const handleSessionCardClick = (sessionId: string) => {
+    const sessionShortcuts = config.shortcuts.filter(s => s.sessionId === sessionId);
+    setShowManageSessionsModal(false);
+    setManageSessionsModalView('grid');
+    
+    if (sessionShortcuts.length > 0) {
+      const firstShortcut = sessionShortcuts[0];
+      setActiveShortcutId(firstShortcut.id);
+      if (!instantiatedShortcuts.includes(firstShortcut.id)) {
+        setInstantiatedShortcuts(prev => [...prev, firstShortcut.id]);
+      }
+    } else {
+      // No shortcuts found, open Add Shortcut Modal with this session pre-selected
+      setNewShortcutSessionId(sessionId);
+      setShowAddShortcutModal(true);
+    }
   };
 
   // Homepage quick search
@@ -574,60 +633,201 @@ export default function App() {
 
       {/* Manage Sessions Modal */}
       {showManageSessionsModal && (
-        <div className="modal-overlay" onClick={() => setShowManageSessionsModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title">Gerenciar Contas & Sessões</h3>
-            </div>
-            
-            <div className="session-list">
-              {config.sessions.map(s => (
-                <div key={s.id} className="session-item">
-                  <span className="session-item-name">{s.name}</span>
-                  {s.id !== 'session_default' && (
-                    <button 
-                      className="btn-icon" 
-                      onClick={() => handleRemoveSession(s.id)}
-                      title="Excluir Conta (deleta atalhos vinculados)"
-                      style={{ color: 'var(--danger-color)' }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
+        <div className="modal-overlay" onClick={() => { setShowManageSessionsModal(false); setManageSessionsModalView('grid'); }}>
+          <div 
+            className={`modal-content ${manageSessionsModalView === 'grid' ? 'modal-large' : ''}`} 
+            onClick={(e) => e.stopPropagation()}
+            style={{ position: 'relative' }}
+          >
+            {/* Close Button in header */}
+            <button 
+              className="btn-icon" 
+              onClick={() => { setShowManageSessionsModal(false); setManageSessionsModalView('grid'); }}
+              style={{ position: 'absolute', top: '16px', right: '16px', zIndex: 20 }}
+              title="Fechar"
+            >
+              <X size={18} />
+            </button>
 
-            <form onSubmit={handleAddSessionSubmit}>
-              <div className="form-group">
-                <label className="form-label">Nova Conta / Cliente</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={newSessionName}
-                    onChange={(e) => setNewSessionName(e.target.value)}
-                    placeholder="Ex: Cliente X, Conta Pessoal"
-                  />
-                  <button type="submit" className="btn btn-primary" style={{ flexShrink: 0 }}>
-                    <UserPlus size={16} />
+            {manageSessionsModalView === 'grid' ? (
+              <div className="profile-dashboard">
+                <div className="modal-header" style={{ marginBottom: '4px' }}>
+                  <h3 className="modal-title">Gerenciar Perfis & Ambientes</h3>
+                </div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                  Cada perfil opera em um ambiente 100% isolado de cookies, logins e sessões.
+                </p>
+
+                <div className="profile-grid">
+                  {config.sessions.map(s => {
+                    const sColor = s.color || (s.id === 'session_default' ? '#6366f1' : PREDEFINED_COLORS[0]);
+                    const shortcutsCount = config.shortcuts.filter(sh => sh.sessionId === s.id).length;
+                    
+                    return (
+                      <div 
+                        key={s.id} 
+                        className="profile-card"
+                        style={{ 
+                          '--theme-color': sColor,
+                          '--theme-color-glow': `${sColor}26`
+                        } as React.CSSProperties}
+                        onClick={() => handleSessionCardClick(s.id)}
+                      >
+                        <div className="profile-avatar-wrapper">
+                          <div 
+                            className="profile-avatar"
+                            style={{ 
+                              background: `linear-gradient(135deg, ${sColor}, ${sColor}88)`
+                            }}
+                          >
+                            {s.name.charAt(0).toUpperCase()}
+                          </div>
+                        </div>
+
+                        <div className="profile-card-name" title={s.name}>
+                          {s.name}
+                        </div>
+
+                        <div className="profile-card-desc">
+                          {s.id === 'session_default' ? (
+                            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', color: 'var(--accent-color)', fontWeight: 600 }}>
+                              <Lock size={12} /> Principal
+                            </span>
+                          ) : (
+                            shortcutsCount === 1 ? '1 atalho' : `${shortcutsCount} atalhos`
+                          )}
+                        </div>
+
+                        <div className="profile-card-actions">
+                          {s.id !== 'session_default' && (
+                            <button 
+                              className="btn-icon action-delete" 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveSession(s.id);
+                              }}
+                              title="Excluir Perfil (apaga atalhos vinculados)"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                          <button 
+                            className="btn-icon"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSessionCardClick(s.id);
+                            }}
+                            title="Abrir ambiente"
+                          >
+                            <ExternalLink size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Add Profile Card */}
+                  <div 
+                    className="profile-card profile-card-add"
+                    onClick={() => setManageSessionsModalView('add')}
+                  >
+                    <Plus size={24} className="profile-add-icon" />
+                    <div className="profile-card-name" style={{ fontWeight: 500, fontSize: '0.9rem' }}>
+                      Criar Perfil
+                    </div>
+                    <div className="profile-card-desc" style={{ marginBottom: 0 }}>
+                      Nova sandbox
+                    </div>
+                  </div>
+                </div>
+
+                <div className="modal-footer" style={{ marginTop: 0 }}>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary" 
+                    onClick={() => { setShowManageSessionsModal(false); setManageSessionsModalView('grid'); }}
+                  >
+                    Fechar
                   </button>
                 </div>
               </div>
-              
-              <div style={{ display: 'flex', gap: '8px', padding: '10px', background: 'rgba(239,68,68,0.06)', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.1)', marginTop: '20px' }}>
-                <ShieldAlert size={18} style={{ color: 'var(--danger-color)', flexShrink: 0, marginTop: '2px' }} />
-                <p style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', lineHeight: '1.2rem' }}>
-                  Deletar uma conta/sessão fará com que todos os cookies e logins salvos associados a ela sejam removidos. Os atalhos associados a ela também serão excluídos.
-                </p>
-              </div>
+            ) : (
+              <div className="add-profile-view">
+                <div className="modal-header">
+                  <h3 className="modal-title">Adicionar Novo Perfil</h3>
+                </div>
 
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowManageSessionsModal(false)}>
-                  Fechar
-                </button>
+                <form onSubmit={handleAddSessionSubmit}>
+                  <div className="form-group">
+                    <label className="form-label">Nome do Perfil / Cliente</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={newSessionName}
+                      onChange={(e) => setNewSessionName(e.target.value)}
+                      placeholder="Ex: Cliente XPTO, Conta Trabalho"
+                      required
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Cor de Identificação</label>
+                    <div className="color-picker">
+                      {PREDEFINED_COLORS.map(c => (
+                        <div
+                          key={c}
+                          className={`color-option ${newSessionColor === c ? 'selected' : ''}`}
+                          style={{ backgroundColor: c }}
+                          onClick={() => setNewSessionColor(c)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="form-group" style={{ margin: '20px 0' }}>
+                    <label className="checkbox-container">
+                      <input 
+                        type="checkbox" 
+                        checked={newSessionAutoLoginGoogle}
+                        onChange={(e) => setNewSessionAutoLoginGoogle(e.target.checked)}
+                      />
+                      <span className="custom-checkbox">
+                        {newSessionAutoLoginGoogle && <Check size={12} />}
+                      </span>
+                      <span className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Chrome size={14} style={{ color: '#ea4335' }} /> Fazer login no Google imediatamente
+                      </span>
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px', padding: '10px', background: 'rgba(239,68,68,0.06)', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.1)', marginBottom: '20px' }}>
+                    <ShieldAlert size={18} style={{ color: 'var(--danger-color)', flexShrink: 0, marginTop: '2px' }} />
+                    <p style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', lineHeight: '1.2rem' }}>
+                      A exclusão de um perfil remove permanentemente todos os cookies, logins salvos e atalhos vinculados a ele.
+                    </p>
+                  </div>
+
+                  <div className="modal-footer">
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary" 
+                      onClick={() => {
+                        setManageSessionsModalView('grid');
+                        setNewSessionName('');
+                        setNewSessionColor(PREDEFINED_COLORS[0]);
+                        setNewSessionAutoLoginGoogle(false);
+                      }}
+                    >
+                      Voltar
+                    </button>
+                    <button type="submit" className="btn btn-primary">
+                      Criar Perfil
+                    </button>
+                  </div>
+                </form>
               </div>
-            </form>
+            )}
           </div>
         </div>
       )}
