@@ -103,3 +103,9 @@ When developing or debugging this project, agents must respect these findings to
   1. `run-volt.bat` (dev mode - Vite dev server + Electron)
   2. `release/win-unpacked/Volt Browser.exe` (local compiled production test)
   3. The officially installed application path in local appdata.
+
+### F. WebAuthn (Passkeys / Windows Hello PIN) Development Limitation
+* **Issue**: During local development (`npm run dev`), attempting to log in via a Google Passkey will show the Windows Hello PIN dialog, but after entering the PIN, the browser hangs indefinitely on "Verificando sua identidade..." (Verifying your identity).
+* **Cause**: In local dev mode, the app runs inside the unverified and unsigned `node_modules/electron/dist/electron.exe` binary. Windows Hello security subsystems block returning authentication credentials/assertions to unsigned and untrusted Win32 binary paths to protect credentials.
+* **Development Workaround**: Click "Tentar de outro jeito" (Try another way) on the Google login page and proceed with password-based authentication + standard MFA.
+* **Production Resolution**: Once the application is packaged and signed with a standard code-signing certificate (typical for production deployment), Windows Hello and Google will verify the trusted executable identity and successfully return the credentials, resolving the flow automatically.
