@@ -14,7 +14,8 @@ import {
   X,
   ExternalLink,
   Lock,
-  Chrome
+  Chrome,
+  Edit2
 } from 'lucide-react';
 import { UserConfig, ShortcutConfig, SessionConfig } from './electron-api';
 
@@ -62,7 +63,15 @@ export default function App() {
   const [newSessionName, setNewSessionName] = useState<string>('');
   const [newSessionColor, setNewSessionColor] = useState<string>(PREDEFINED_COLORS[0]);
   const [newSessionAutoLoginGoogle, setNewSessionAutoLoginGoogle] = useState<boolean>(false);
-  const [manageSessionsModalView, setManageSessionsModalView] = useState<'grid' | 'add'>('grid');
+  const [manageSessionsModalView, setManageSessionsModalView] = useState<'grid' | 'add' | 'edit'>('grid');
+
+  // Edit Session Form State
+  const [editingSession, setEditingSession] = useState<SessionConfig | null>(null);
+  const [editSessionName, setEditSessionName] = useState<string>('');
+  const [editSessionColor, setEditSessionColor] = useState<string>(PREDEFINED_COLORS[0]);
+
+  // Search Session Selection State
+  const [searchSessionId, setSearchSessionId] = useState<string>('session_default');
 
   // Search Box Home State
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -349,20 +358,68 @@ export default function App() {
     }
   };
 
-  // Homepage quick search
-  const handleSearchSubmit = (e: React.FormEvent) => {
+  const handleEditSessionClick = (session: SessionConfig, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingSession(session);
+    setEditSessionName(session.name);
+    setEditSessionColor(session.color || PREDEFINED_COLORS[0]);
+    setManageSessionsModalView('edit');
+  };
+
+  const handleEditSessionSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSession || !editSessionName.trim()) return;
+
+    const updatedSessions = config.sessions.map(s => {
+      if (s.id === editingSession.id) {
+        return {
+          ...s,
+          name: editSessionName.trim(),
+          color: editSessionColor
+        };
+      }
+      return s;
+    });
+
+    const updatedConfig = {
+      ...config,
+      sessions: updatedSessions
+    };
+
+    setConfig(updatedConfig);
+    await window.electronAPI.saveConfig(updatedConfig);
+
+    setEditingSession(null);
+    setEditSessionName('');
+    setManageSessionsModalView('grid');
+  };
+
+  const handleSearchPageSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
 
-    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
-    
-    // Add temporary search shortcut in configuration
+    let targetUrl = searchQuery.trim();
+    let shortcutName = `Busca: ${searchQuery}`;
+
+    const isUrl = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([\/\w .-]*)*\/?$/i.test(targetUrl);
+    if (isUrl) {
+      if (!/^https?:\/\//i.test(targetUrl)) {
+        targetUrl = 'https://' + targetUrl;
+      }
+      shortcutName = targetUrl.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
+    } else {
+      targetUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
+    }
+
+    const selectedSession = config.sessions.find(s => s.id === searchSessionId);
+    const sColor = selectedSession?.color || PREDEFINED_COLORS[0];
+
     const newShortcut: ShortcutConfig = {
-      id: `search_${Date.now()}`,
-      name: `Busca: ${searchQuery}`,
-      url: searchUrl,
-      sessionId: 'session_default',
-      color: '#a855f7' // Purple icon color for search shortcuts
+      id: `shortcut_${Date.now()}`,
+      name: shortcutName,
+      url: targetUrl,
+      sessionId: searchSessionId,
+      color: sColor
     };
 
     const updatedConfig = {
@@ -371,11 +428,13 @@ export default function App() {
     };
 
     setConfig(updatedConfig);
-    window.electronAPI.saveConfig(updatedConfig);
+    await window.electronAPI.saveConfig(updatedConfig);
     setSearchQuery('');
     
     handleShortcutClick(newShortcut.id);
   };
+
+
 
   const activeShortcut = config.shortcuts.find(s => s.id === activeShortcutId);
   const activeSessionName = activeShortcut 
@@ -396,6 +455,16 @@ export default function App() {
           title="Home Page"
         >
           <Home size={18} />
+        </button>
+
+        {/* Search Button */}
+        <button 
+          className={`dock-item ${activeShortcutId === '__search__' ? 'active' : ''}`}
+          onClick={() => setActiveShortcutId('__search__')}
+          title="Pesquisa Multicontas"
+          style={{ marginTop: '8px' }}
+        >
+          <Search size={18} />
         </button>
 
         <div style={{ width: '24px', height: '1px', background: 'var(--border-color)', margin: '12px 0' }} />
@@ -440,71 +509,127 @@ export default function App() {
       {/* Main Panel */}
       <main className="workspace">
         {activeShortcutId ? (
-          <>
-            {/* Header Address Bar controls */}
-            <header className="top-header">
-              <div className="header-actions">
-                <button className="btn-icon" onClick={handleGoBack} title="Voltar">
-                  <ArrowLeft size={16} />
-                </button>
-                <button className="btn-icon" onClick={handleGoForward} title="Avançar">
-                  <ArrowRight size={16} />
-                </button>
-                <button className="btn-icon" onClick={handleReload} title="Recarregar">
-                  <RotateCw size={16} />
-                </button>
-              </div>
-
-              <div className="url-bar-container">
-                <form className="url-form" onSubmit={handleUrlSubmit}>
-                  <Globe className="url-icon" size={14} />
-                  <input
-                    type="text"
-                    className="url-input"
-                    value={tempUrl}
-                    onChange={(e) => setTempUrl(e.target.value)}
-                    placeholder="Digite um link para navegar..."
-                  />
+          activeShortcutId === '__search__' ? (
+            /* Dedicated Search Page */
+            <div className="search-page">
+              <div className="search-container">
+                <div className="search-header">
+                  <Search className="search-header-icon" size={32} />
+                  <h2>Pesquisa Multicontas</h2>
+                  <p>Selecione um perfil para realizar a busca no ambiente isolado correspondente.</p>
+                </div>
+                
+                <form onSubmit={handleSearchPageSubmit} className="search-form-full">
+                  <div className="search-input-wrapper">
+                    <input
+                      type="text"
+                      className="search-input-field"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Pesquisar no Google ou digitar endereço..."
+                      autoFocus
+                    />
+                    <button type="submit" className="search-submit-btn" title="Buscar">
+                      <ArrowRight size={20} />
+                    </button>
+                  </div>
+                  
+                  <div className="profile-selector-group">
+                    <label className="group-label">Pesquisar usando o perfil:</label>
+                    <div className="profile-options-row">
+                      {config.sessions.map(s => {
+                        const sColor = s.color || (s.id === 'session_default' ? '#6366f1' : PREDEFINED_COLORS[0]);
+                        const isSelected = searchSessionId === s.id;
+                        return (
+                          <div
+                            key={s.id}
+                            className={`profile-option-card ${isSelected ? 'selected' : ''}`}
+                            style={{ 
+                              '--profile-color': sColor,
+                              '--profile-color-glow': `${sColor}20`
+                            } as React.CSSProperties}
+                            onClick={() => setSearchSessionId(s.id)}
+                          >
+                            <div className="profile-option-avatar" style={{ backgroundColor: sColor }}>
+                              {s.name.charAt(0).toUpperCase()}
+                            </div>
+                            <span className="profile-option-name">{s.name}</span>
+                            {isSelected && <Check size={14} className="profile-selected-check" />}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </form>
               </div>
-
-              <div className="header-badge-container">
-                {activeSessionName && (
-                  <div className="session-badge" title="Sessão de conta isolada">
-                    <span className="session-dot" style={{ backgroundColor: activeShortcut?.color }} />
-                    {activeSessionName}
-                  </div>
-                )}
-                <button 
-                  className="btn-icon" 
-                  onClick={(e) => handleRemoveShortcut(activeShortcutId, e)}
-                  title="Excluir Atalho"
-                  style={{ color: 'var(--danger-color)' }}
-                >
-                  <Trash2 size={15} />
-                </button>
-              </div>
-            </header>
-
-            {/* Guest WebView Rendering viewports */}
-            <div className="view-port">
-              {preloadPath && config.shortcuts.map(shortcut => {
-                if (!instantiatedShortcuts.includes(shortcut.id)) return null;
-                const isHidden = activeShortcutId !== shortcut.id;
-                
-                return (
-                  <webview
-                    key={shortcut.id}
-                    data-id={shortcut.id}
-                    src={shortcut.url}
-                    partition={`persist:account_${shortcut.sessionId}`}
-                    preload={preloadPath}
-                    className={isHidden ? 'hidden-webview' : ''}
-                  />
-                );
-              })}
             </div>
-          </>
+          ) : (
+            <>
+              {/* Header Address Bar controls */}
+              <header className="top-header">
+                <div className="header-actions">
+                  <button className="btn-icon" onClick={handleGoBack} title="Voltar">
+                    <ArrowLeft size={16} />
+                  </button>
+                  <button className="btn-icon" onClick={handleGoForward} title="Avançar">
+                    <ArrowRight size={16} />
+                  </button>
+                  <button className="btn-icon" onClick={handleReload} title="Recarregar">
+                    <RotateCw size={16} />
+                  </button>
+                </div>
+
+                <div className="url-bar-container">
+                  <form className="url-form" onSubmit={handleUrlSubmit}>
+                    <Globe className="url-icon" size={14} />
+                    <input
+                      type="text"
+                      className="url-input"
+                      value={tempUrl}
+                      onChange={(e) => setTempUrl(e.target.value)}
+                      placeholder="Digite um link para navegar..."
+                    />
+                  </form>
+                </div>
+
+                <div className="header-badge-container">
+                  {activeSessionName && (
+                    <div className="session-badge" title="Sessão de conta isolada">
+                      <span className="session-dot" style={{ backgroundColor: activeShortcut?.color }} />
+                      {activeSessionName}
+                    </div>
+                  )}
+                  <button 
+                    className="btn-icon" 
+                    onClick={(e) => handleRemoveShortcut(activeShortcutId, e)}
+                    title="Excluir Atalho"
+                    style={{ color: 'var(--danger-color)' }}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </header>
+
+              {/* Guest WebView Rendering viewports */}
+              <div className="view-port">
+                {preloadPath && config.shortcuts.map(shortcut => {
+                  if (!instantiatedShortcuts.includes(shortcut.id)) return null;
+                  const isHidden = activeShortcutId !== shortcut.id;
+                  
+                  return (
+                    <webview
+                      key={shortcut.id}
+                      data-id={shortcut.id}
+                      src={shortcut.url}
+                      partition={`persist:account_${shortcut.sessionId}`}
+                      preload={preloadPath}
+                      className={isHidden ? 'hidden-webview' : ''}
+                    />
+                  );
+                })}
+              </div>
+            </>
+          )
         ) : (
           /* Homepage Viewport */
           <div className="homepage">
@@ -513,20 +638,8 @@ export default function App() {
               <p className="logo-subtitle">Ambiente modular de produtividade e isolamento de contas</p>
             </div>
 
-            {/* Search Engine form */}
-            <form className="home-search" onSubmit={handleSearchSubmit}>
-              <Search className="home-search-icon" size={20} />
-              <input
-                type="text"
-                className="home-search-input"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Pesquisar no Google ou digitar endereço..."
-              />
-            </form>
-
             {/* Quick shortcuts grid */}
-            {config.shortcuts.length > 0 && (
+            {config.shortcuts.length > 0 ? (
               <div className="shortcuts-grid">
                 {config.shortcuts.map(shortcut => {
                   const sColor = shortcut.color;
@@ -553,6 +666,23 @@ export default function App() {
                     </div>
                   );
                 })}
+              </div>
+            ) : (
+              /* Gorgeous Empty State */
+              <div className="home-empty-state">
+                <div className="empty-state-icon">
+                  <Globe size={40} />
+                </div>
+                <h3>Nenhum atalho criado</h3>
+                <p>Crie atalhos rápidos para seus sites favoritos ou faça pesquisas isoladas por perfil.</p>
+                <div className="empty-state-actions">
+                  <button className="btn btn-primary" onClick={() => setShowAddShortcutModal(true)}>
+                    <Plus size={16} style={{ marginRight: '6px' }} /> Criar Atalho
+                  </button>
+                  <button className="btn btn-secondary" onClick={() => setActiveShortcutId('__search__')}>
+                    <Search size={16} style={{ marginRight: '6px' }} /> Pesquisar na Web
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -699,6 +829,15 @@ export default function App() {
                         </div>
 
                         <div className="profile-card-actions">
+                          {/* Edit Button */}
+                          <button 
+                            className="btn-icon" 
+                            onClick={(e) => handleEditSessionClick(s, e)}
+                            title="Editar Perfil"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+
                           {s.id !== 'session_default' && (
                             <button 
                               className="btn-icon action-delete" 
@@ -751,7 +890,7 @@ export default function App() {
                   </button>
                 </div>
               </div>
-            ) : (
+            ) : manageSessionsModalView === 'add' ? (
               <div className="add-profile-view">
                 <div className="modal-header">
                   <h3 className="modal-title">Adicionar Novo Perfil</h3>
@@ -823,6 +962,58 @@ export default function App() {
                     </button>
                     <button type="submit" className="btn btn-primary">
                       Criar Perfil
+                    </button>
+                  </div>
+                </form>
+              </div>
+            ) : (
+              <div className="edit-profile-view">
+                <div className="modal-header">
+                  <h3 className="modal-title">Editar Perfil</h3>
+                </div>
+
+                <form onSubmit={handleEditSessionSubmit}>
+                  <div className="form-group">
+                    <label className="form-label">Nome do Perfil / Cliente</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={editSessionName}
+                      onChange={(e) => setEditSessionName(e.target.value)}
+                      placeholder="Ex: Cliente XPTO, Conta Trabalho"
+                      required
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Cor de Identificação</label>
+                    <div className="color-picker">
+                      {PREDEFINED_COLORS.map(c => (
+                        <div
+                          key={c}
+                          className={`color-option ${editSessionColor === c ? 'selected' : ''}`}
+                          style={{ backgroundColor: c }}
+                          onClick={() => setEditSessionColor(c)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="modal-footer" style={{ marginTop: '30px' }}>
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary" 
+                      onClick={() => {
+                        setManageSessionsModalView('grid');
+                        setEditingSession(null);
+                        setEditSessionName('');
+                      }}
+                    >
+                      Voltar
+                    </button>
+                    <button type="submit" className="btn btn-primary">
+                      Salvar Alterações
                     </button>
                   </div>
                 </form>
