@@ -139,11 +139,11 @@ pause
     $electronExe = Join-Path $projectPath "node_modules\electron\dist\electron.exe"
     if (Test-Path $electronExe) {
         $sc.TargetPath = $electronExe
-        $sc.Arguments = "."
+        $sc.Arguments = ". --direct"
         $sc.WorkingDirectory = $projectPath
         $sc.Description = "Volt Browser - Modo Direto (build local, sem CMD)"
         Write-Output "Alvo final sem CMD: $electronExe"
-        Write-Output "Args: ."
+        Write-Output "Args: . --direct"
         if (Test-Path $batchPath) {
             Remove-Item -LiteralPath $batchPath -Force
             Write-Output "Arquivo temporário run-volt-prod.bat removido."

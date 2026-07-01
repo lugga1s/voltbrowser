@@ -91,7 +91,8 @@ function createWindow() {
   });
 
   // Load URL
-  if (!app.isPackaged) {
+  const isDirect = process.argv.includes('--direct');
+  if (!app.isPackaged && !isDirect) {
     mainWindow.loadURL('http://localhost:5173');
     // Open DevTools in dev mode
     mainWindow.webContents.openDevTools();
